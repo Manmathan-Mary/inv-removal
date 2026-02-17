@@ -321,7 +321,7 @@ if __name__ == "__main__":
             total_epc_count = inventory_df.shape[0]
             
             if not inventory_df.is_empty():
-                inventory_df.write_csv(f"inventory_epc_removal_{site_id}_{execution_time}.csv") 
+                inventory_df.write_csv(f"{OUTPUT_DATA_FOLDER}/inventory_epc_removal_{site_id}_{execution_time}.csv") 
                 zone_epcs_df = inventory_df.group_by(
                     pl.col("site_id"), pl.col("zone_id")
                 ).agg(pl.col("epc").alias("epc_list"))
