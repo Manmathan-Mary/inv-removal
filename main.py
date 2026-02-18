@@ -190,7 +190,15 @@ def parse_args():
         help="Input CSV or Excel file"
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if args.site_ids and args.site_limit:
+        parser.error("Provide either --site-ids OR --site-limit, not both.")
+
+    if not args.site_ids and not args.site_limit:
+        parser.error("You must provide either --site-ids OR --site-limit.")
+    
+    return args 
 
 def send_inventory_remove_request(envr:str, business_unit_id: str,inventory_epcs_removal_payload: str) -> requests.Response:
     INVENTORY_REMOVE_URL = f"https://inventory-{envr}.truevue.shoppertrak.com//epcEvent/reads/removed"
@@ -239,7 +247,7 @@ def persist_summary(summary_rows):
 
 if __name__ == "__main__":
     args = parse_args()
-
+    
     logger.info(f"env                    = {args.env}")
     logger.info(f"buid                   = {args.buid}")
     logger.info(f"siteId                 = {args.site_ids}")
@@ -255,7 +263,7 @@ if __name__ == "__main__":
         product_df = pl.read_excel(args.input_file)
     else: 
         logger.info(f"file format is not supported {ext}")
-        system.exit(1)
+        sys.exit(1)
 
 
     if not product_df.is_empty():
@@ -266,16 +274,18 @@ if __name__ == "__main__":
         SITES_FILES = SITES_FILES.format(buid=args.buid)
         COMPLETED_SITES_FILE = COMPLETED_SITES_FILE.format(cacheFolderName=CACHE_FOLDER_NAME, buid=args.buid)
         
-        try:
-            sites_df = pl.read_csv(f"{CACHE_FOLDER_NAME}/{SITES_FILES}")
-        except FileNotFoundError: 
+        site_file_path = f"{CACHE_FOLDER_NAME}/{SITES_FILES}"
+        if os.path.exists(site_file_path):
+            sites_df = pl.read_csv(site_file_path)
+
+        else: 
             logger.info("site cache file not found getting it from spanner")
             facility_engine = get_engine(PROJECT_ID, INSTANCE_NAME, FACILITY_DATABASE)
             sites_df = execute_query_return_dataframe(GET_ALL_ACTIVE_SITES, facility_engine, params)
 
             if not sites_df.is_empty():
                 os.makedirs(CACHE_FOLDER_NAME,exist_ok=True)
-                sites_df.write_csv(f"{CACHE_FOLDER_NAME}/{SITES_FILES}")
+                sites_df.write_csv(site_file_path)
             
             else : 
                 logger.info(f"No active sites identified, exiting")
@@ -284,7 +294,7 @@ if __name__ == "__main__":
         # site selections for inventory epc removal. 
 
         sites_for_removal = []
-        try: 
+        if os.path.exists(COMPLETED_SITES_FILE):
             completed_sites_df = pl.read_csv(COMPLETED_SITES_FILE)
 
             if args.site_ids :
@@ -297,7 +307,7 @@ if __name__ == "__main__":
                 uncompleted_sites = uncompleted_sites_df.head(args.site_limit).select(pl.col("site_id")).to_series().to_list()
                 sites_for_removal.extend(uncompleted_sites)
 
-        except FileNotFoundError :
+        else :
             logger.info("completed sites file not found")
             if args.site_ids :
                 sites_for_removal = args.site_ids   
